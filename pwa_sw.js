@@ -12,7 +12,7 @@
 // - Lo pesado que no cambia entre versiones (motor gráfico, SQLite, fuentes,
 //   íconos): primero lo guardado, al instante.
 
-const CACHE = 'pharma-nashly-v1';
+const CACHE = 'pharma-nashly-v2';
 const ESPERA_RED_MS = 4000;
 
 // Lo mínimo para arrancar sin red. Si alguno no existe, se sigue (allSettled).
@@ -81,13 +81,35 @@ async function guardadoPrimero(pedido) {
 
 async function redPrimero(pedido, respaldo) {
   const cache = await caches.open(CACHE);
+  let red = Promise.reject(new Error('sin pedir'));
+  red.catch(() => {});
   try {
-    const respuesta = await conLimite(fetch(pedido), ESPERA_RED_MS);
+    // «no-cache»: pregunta al servidor aunque el navegador tenga copia.
+    // GitHub Pages permite guardar 10 minutos; sin esto una versión nueva
+    // tardaba hasta 10 minutos en verse. Si no cambió, responde 304 (casi
+    // nada que bajar). Una navegación no admite opciones: se pide por URL.
+    red = pedido.mode === 'navigate'
+      ? fetch(pedido.url, { cache: 'no-cache', credentials: 'same-origin' })
+      : fetch(pedido, { cache: 'no-cache' });
+    const respuesta = await conLimite(red, ESPERA_RED_MS);
     if (respuesta.ok) cache.put(pedido, respuesta.clone());
     return respuesta;
   } catch (_) {
     const guardado = (await cache.match(pedido)) || (respaldo && (await cache.match(respaldo)));
-    if (guardado) return guardado;
+    if (guardado) {
+      // La red tardó: sale lo guardado ya, y lo nuevo se guarda cuando llegue.
+      red.then((r) => r.ok && cache.put(pedido, r.clone())).catch(() => {});
+      return guardado;
+    }
+    // Sin copia (la primera visita, o un archivo nuevo): se espera a la red
+    // sin límite. Con 4 s, un celular lento nunca terminaba de bajar la app.
+    try {
+      const respuesta = await red;
+      if (respuesta.ok) cache.put(pedido, respuesta.clone());
+      return respuesta;
+    } catch (_) {
+      // Sin red y sin copia: se dice, no se finge.
+    }
     return new Response('Pharma Nashly no está disponible sin conexión todavía. Ábrela una vez con internet.', {
       status: 503,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
