@@ -66,6 +66,27 @@
   -->
   <script src="flutter_bootstrap.js" async></script>
   <script>
+    // iPhone/iPad: Safari hace zoom solo al enfocar un campo con letra menor
+    // de 16 px y no vuelve; la app quedaba agrandada y cortada a la derecha.
+    // El motor de Flutter pone «maximum-scale=5.0»: se fija en 1 y se vigila
+    // por si lo vuelve a poner. El zoom de Accesibilidad de iOS sigue andando.
+    (function () {
+      var VIEWPORT = 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover';
+      function fijar() {
+        var metas = document.querySelectorAll('meta[name=viewport]');
+        if (!metas.length) {
+          var m = document.createElement('meta');
+          m.name = 'viewport';
+          document.head.appendChild(m);
+          metas = [m];
+        }
+        for (var i = 0; i < metas.length; i++) {
+          if (metas[i].content !== VIEWPORT) metas[i].content = VIEWPORT;
+        }
+      }
+      fijar();
+      new MutationObserver(fijar).observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
+    })();
     // La pantalla de arranque se va con el primer cuadro de la app.
     window.addEventListener('flutter-first-frame', function () {
       var a = document.getElementById('arranque');
